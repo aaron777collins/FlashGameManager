@@ -5,6 +5,13 @@ import urllib.parse
 import json
 import sys
 import hashlib
+import logging
+
+# Set up logging
+log_folder = os.path.join(os.path.dirname(__file__), 'log')
+if not os.path.exists(log_folder):
+    os.makedirs(log_folder)
+logging.basicConfig(filename=os.path.join(log_folder, 'flash_game_manager.log'), level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Color Variables
 BACKGROUND_COLOR = "#f0f0f0"
@@ -16,11 +23,13 @@ TEXT_COLOR = "#333333"
 SECONDARY_TEXT_COLOR = "#555555"
 WIDGET_BACKGROUND_COLOR = "#ffffff"
 BORDER_COLOR = "#d3d3d3"
+SCROLLBAR_COLOR = "#888888"
 
 
 class FlashGameManager(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
+        logging.info("Initializing FlashGameManager")
         self.setWindowTitle("Flash Game Manager")
         self.setGeometry(100, 100, 1000, 700)
         self.setStyleSheet(f"background-color: {BACKGROUND_COLOR};")
@@ -33,13 +42,18 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
+            logging.info(f"Created data folder: {self.data_folder}")
         if not os.path.exists(self.cache_folder):
             os.makedirs(self.cache_folder)
+            logging.info(f"Created cache folder: {self.cache_folder}")
 
         self.load_my_games()
         self.init_ui()
+        self.status_bar = QtWidgets.QStatusBar()
+        self.setStatusBar(self.status_bar)
 
     def init_ui(self):
+        logging.info("Initializing UI")
         self.central_widget = QtWidgets.QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QtWidgets.QVBoxLayout(self.central_widget)
@@ -64,6 +78,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.create_details_view()
 
     def create_search_view(self):
+        logging.info("Creating search view")
         search_layout = QtWidgets.QVBoxLayout(self.search_tab)
 
         # Search bar
@@ -83,6 +98,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         # Search results area with scroll
         self.results_area = QtWidgets.QScrollArea()
         self.results_area.setWidgetResizable(True)
+        self.results_area.setStyleSheet("QScrollBar:vertical { width: 8px; background: #f0f0f0; } QScrollBar::handle:vertical { background: #888888; border-radius: 4px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.results_widget = QtWidgets.QWidget()
         self.results_layout = QtWidgets.QVBoxLayout(self.results_widget)
         self.results_layout.setAlignment(QtCore.Qt.AlignTop)
@@ -92,6 +108,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         search_layout.addWidget(self.results_area)
 
     def create_my_games_view(self):
+        logging.info("Creating My Games view")
         my_games_layout = QtWidgets.QVBoxLayout(self.my_games_tab)
 
         # Filter bar
@@ -111,6 +128,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         # My games area with scroll
         self.my_games_area = QtWidgets.QScrollArea()
         self.my_games_area.setWidgetResizable(True)
+        self.my_games_area.setStyleSheet("QScrollBar:vertical { width: 8px; background: #f0f0f0; } QScrollBar::handle:vertical { background: #888888; border-radius: 4px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.my_games_widget = QtWidgets.QWidget()
         self.my_games_layout = QtWidgets.QVBoxLayout(self.my_games_widget)
         self.my_games_layout.setAlignment(QtCore.Qt.AlignTop)
@@ -120,6 +138,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.update_my_games_view()
 
     def create_details_view(self):
+        logging.info("Creating Details view")
         self.details_layout = QtWidgets.QVBoxLayout(self.details_tab)
 
         # Image frame
@@ -135,6 +154,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.details_text.setReadOnly(True)
         self.details_text.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; padding: 10px; border: 1px solid {BORDER_COLOR}; font-size: 14px;")
         self.details_text.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.details_text.setStyleSheet("QScrollBar:vertical { width: 8px; background: #f0f0f0; } QScrollBar::handle:vertical { background: #888888; border-radius: 4px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.details_layout.addWidget(self.details_text, stretch=2)
 
         # Additional info frame
@@ -142,6 +162,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.additional_info_text.setReadOnly(True)
         self.additional_info_text.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; padding: 10px; border: 1px solid {BORDER_COLOR}; font-size: 14px;")
         self.additional_info_text.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.additional_info_text.setStyleSheet("QScrollBar:vertical { width: 8px; background: #f0f0f0; } QScrollBar::handle:vertical { background: #888888; border-radius: 4px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.details_layout.addWidget(self.additional_info_text, stretch=1)
 
         # Add to My Games button
@@ -157,27 +178,33 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.details_layout.addWidget(close_button)
 
     def cache_request(self, url):
+        logging.info(f"Cache request for URL: {url}")
         # Create a hash of the URL to use as the cache filename
         cache_key = hashlib.md5(url.encode()).hexdigest()
         cache_path = os.path.join(self.cache_folder, f"{cache_key}.json")
 
         # Check if the response is already cached
         if os.path.exists(cache_path):
+            logging.info(f"Loading cached response for URL: {url}")
             with open(cache_path, 'r') as cache_file:
                 return json.load(cache_file)
 
         # If not cached, make the request and cache the response
         response = requests.get(url)
         if response.status_code == 200:
+            logging.info(f"Caching response for URL: {url}")
             with open(cache_path, 'w') as cache_file:
                 json.dump(response.json(), cache_file)
             return response.json()
         else:
+            logging.error(f"Failed to fetch data from URL: {url} with status code {response.status_code}")
             return None
 
     def search_game(self):
         query = self.search_input.text().strip()
+        logging.info(f"Searching for game with query: {query}")
         if not query:
+            logging.warning("Search input is empty")
             QtWidgets.QMessageBox.warning(self, "Input Error", "Please enter a game title to search.")
             return
 
@@ -186,11 +213,15 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.games_data = self.cache_request(search_url)
 
         if self.games_data is not None:
+            if len(self.games_data) == 1:
+                self.games_data.append({"id": "fake_entry", "title": "", "originalDescription": ""})  # Adding a placeholder to avoid the single entry issue
             self.display_search_results()
         else:
+            logging.error("Failed to fetch search results")
             QtWidgets.QMessageBox.critical(self, "Error", "Failed to fetch search results.")
 
     def display_search_results(self):
+        logging.info("Displaying search results")
         # Clear previous search results
         for i in reversed(range(self.results_layout.count())):
             widget = self.results_layout.itemAt(i).widget()
@@ -203,19 +234,22 @@ class FlashGameManager(QtWidgets.QMainWindow):
             game_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
             game_frame.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; border: 1px solid {BORDER_COLOR}; padding: 10px; border-radius: 8px;")
             game_layout = QtWidgets.QHBoxLayout(game_frame)
-            game_frame.setMaximumHeight(200)
 
             # Fetch and display image
             game_id = game['id']
+            if game_id == "fake_entry":
+                continue
+
             img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
             img_path = os.path.join(self.data_folder, f"{game_id}.png")
             if not os.path.exists(img_path):
                 try:
+                    logging.info(f"Fetching image from URL: {img_url}")
                     img_data = requests.get(img_url).content
                     with open(img_path, 'wb') as f:
                         f.write(img_data)
                 except Exception as e:
-                    print(f"Error loading image: {e}")
+                    logging.error(f"Error loading image from URL: {img_url} - {e}")
                     img_label = QtWidgets.QLabel("No Image")
                     img_label.setFixedSize(200, 150)
                     game_layout.addWidget(img_label)
@@ -236,10 +270,11 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             if 'originalDescription' in game:
                 description = game['originalDescription']
-                description_label = QtWidgets.QLabel(self.wrap_text(description, 100))
+                if len(description) > 200:
+                    description = description[:200] + "..."
+                description_label = QtWidgets.QLabel(description)
                 description_label.setWordWrap(True)
                 description_label.setStyleSheet(f"color: {SECONDARY_TEXT_COLOR};")
-                description_label.setMaximumHeight(60)  # Limit the description height
                 info_layout.addWidget(description_label)
 
             # Buttons
@@ -262,10 +297,8 @@ class FlashGameManager(QtWidgets.QMainWindow):
             game_layout.addLayout(info_layout)
             self.results_layout.addWidget(game_frame)
 
-    def wrap_text(self, text, width):
-        return '\n'.join(text[i:i+width] for i in range(0, len(text), width))
-
     def show_game_details(self, game):
+        logging.info(f"Showing details for game: {game['title']}")
         self.tabs.setCurrentWidget(self.details_tab)
         self.current_game = game
 
@@ -274,7 +307,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         for key, value in game.items():
             if isinstance(value, list):
                 value = ', '.join(value)
-            details += f"<b>{key.capitalize()}:</b> {value}<br>"
+            details += f"<b>{key.capitalize()}:</b> {value.replace('\n', '<br>')}<br>"
         self.details_text.setHtml(details)
 
         # Clear previous images in the details view
@@ -301,11 +334,12 @@ class FlashGameManager(QtWidgets.QMainWindow):
         screenshot_path = os.path.join(self.data_folder, f"{game_id}_screenshot.png")
         if not os.path.exists(screenshot_path):
             try:
+                logging.info(f"Fetching screenshot from URL: {screenshot_url}")
                 screenshot_data = requests.get(screenshot_url).content
                 with open(screenshot_path, 'wb') as f:
                     f.write(screenshot_data)
             except Exception as e:
-                print(f"Error loading screenshot: {e}")
+                logging.error(f"Error loading screenshot from URL: {screenshot_url} - {e}")
                 return
 
         screenshot_pixmap = QtGui.QPixmap(screenshot_path).scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -336,11 +370,13 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
     def add_current_game_to_my_games(self):
         if self.current_game is None:
+            logging.warning("No game is currently selected to add to My Games")
             QtWidgets.QMessageBox.warning(self, "No Game Selected", "No game is currently open to add to My Games.")
             return
         self.add_to_my_games(self.current_game)
 
     def add_to_my_games(self, game):
+        logging.info(f"Adding game to My Games: {game['title']}")
         if game not in self.my_games:
             self.my_games.append(game)
             self.update_my_games_view()
@@ -352,17 +388,22 @@ class FlashGameManager(QtWidgets.QMainWindow):
             screenshot_path = os.path.join(self.data_folder, f"{game_id}_screenshot.png")
             if not os.path.exists(screenshot_path):
                 try:
+                    logging.info(f"Caching screenshot for game: {game['title']}")
                     screenshot_data = requests.get(screenshot_url).content
                     with open(screenshot_path, 'wb') as f:
                         f.write(screenshot_data)
                 except Exception as e:
-                    print(f"Error caching screenshot: {e}")
+                    logging.error(f"Error caching screenshot for game: {game['title']} - {e}")
 
-            QtWidgets.QMessageBox.information(self, "Success", "Game added to your collection.")
+            self.status_bar.showMessage("Game added to your collection.", 3000)
         else:
-            QtWidgets.QMessageBox.information(self, "Info", "This game is already in your collection.")
+            logging.info(f"Game already in My Games: {game['title']}")
+            self.status_bar.showMessage("This game is already in your collection.", 3000)
+        # Update search view to reflect the change
+        self.display_search_results()
 
     def update_my_games_view(self):
+        logging.info("Updating My Games view")
         # Clear previous my games results
         for i in reversed(range(self.my_games_layout.count())):
             widget = self.my_games_layout.itemAt(i).widget()
@@ -371,6 +412,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
         # Display each game in my games
         filter_text = self.filter_input.text().strip().lower()
+        logging.info(f"Filtering My Games with filter text: {filter_text}")
 
         for game in self.my_games:
             if filter_text and filter_text not in game['title'].lower():
@@ -407,7 +449,9 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             if 'originalDescription' in game:
                 description = game['originalDescription']
-                description_label = QtWidgets.QLabel(self.wrap_text(description, 100))
+                if len(description) > 200:
+                    description = description[:200] + "..."
+                description_label = QtWidgets.QLabel(description)
                 description_label.setWordWrap(True)
                 description_label.setStyleSheet(f"color: {SECONDARY_TEXT_COLOR};")
                 description_label.setMaximumHeight(60)  # Limit the description height
@@ -428,22 +472,28 @@ class FlashGameManager(QtWidgets.QMainWindow):
             self.my_games_layout.addWidget(game_frame)
 
     def remove_from_my_games(self, game):
+        logging.info(f"Removing game from My Games: {game['title']}")
         self.my_games.remove(game)
         self.update_my_games_view()
         self.save_my_games()
-        QtWidgets.QMessageBox.information(self, "Success", "Game removed from your collection.")
+        self.status_bar.showMessage("Game removed from your collection.", 3000)
+        # Update search view to reflect the change
+        self.display_search_results()
 
     def save_my_games(self):
+        logging.info("Saving My Games to file")
         with open(self.my_games_file, 'w') as f:
             json.dump(self.my_games, f, indent=4)
 
     def load_my_games(self):
+        logging.info("Loading My Games from file")
         if os.path.exists(self.my_games_file):
             with open(self.my_games_file, 'r') as f:
                 self.my_games = json.load(f)
 
 
 if __name__ == "__main__":
+    logging.info("Starting FlashGameManager application")
     app = QtWidgets.QApplication(sys.argv)
     window = FlashGameManager()
     window.show()
