@@ -1,3 +1,4 @@
+from threading import Thread
 from PyQt5 import QtWidgets, QtGui, QtCore
 import requests
 import os
@@ -35,6 +36,9 @@ ICON_IMAGE_HEIGHT = 200
 SCREENSHOT_IMAGE_WIDTH = 400
 SCREENSHOT_IMAGE_HEIGHT = 200
 DESCRIPTION_CUTOFF = 300
+PAGE_SIZE = 15
+DEFAULT_STATUS_BAR_TIME = 3000
+INFINITE_SCROLL_THRESHOLD = 0.9
 
 
 class FlashGameManager(QtWidgets.QMainWindow):
@@ -50,6 +54,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.data_folder = os.path.join(os.path.dirname(__file__), 'game_data')
         self.cache_folder = os.path.join(self.data_folder, 'cache')
         self.my_games_file = os.path.join(self.data_folder, 'my_games.json')
+        self.game_image_layouts_dict: dict[str, QtWidgets.QLayout] = {}
 
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
@@ -217,7 +222,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         logging.info(f"Searching for game with query: {query}")
         if not query:
             logging.warning("Search input is empty")
-            self.set_status_warning("Search input is empty.", 3000)
+            self.set_status_warning("Search input is empty.", DEFAULT_STATUS_BAR_TIME)
             return
 
         encoded_query = urllib.parse.quote(query)
@@ -230,18 +235,53 @@ class FlashGameManager(QtWidgets.QMainWindow):
             self.display_search_results()
         else:
             logging.error("Failed to fetch search results")
-            self.set_status_error("Failed to fetch search results.", 3000)
+            self.set_status_error("Failed to fetch search results.", DEFAULT_STATUS_BAR_TIME)
 
     def display_search_results(self):
-        logging.info("Displaying search results")
+        logging.info("Displaying search results (initial)")
+
         # Clear previous search results
         for i in reversed(range(self.results_layout.count())):
             widget = self.results_layout.itemAt(i).widget()
             if widget is not None:
                 widget.deleteLater()
 
-        # Display each game in search results
-        for game in self.games_data:
+        # Define variables for pagination
+        self.current_page = 1
+        self.all_games_loaded = False  # Flag to track if all games are displayed
+
+        # Display initial set of games (modify this to fetch data for page 1)
+        self.display_games_for_search_page(self.current_page)
+
+        # Connect scroll event handler
+        self.results_area.verticalScrollBar().valueChanged.connect(self.handle_scroll)
+
+    def handle_scroll(self, value):
+        # Check if scroll is near the bottom
+        scroll_bar = self.results_area.verticalScrollBar()
+        max_value = scroll_bar.maximum()
+        threshold = INFINITE_SCROLL_THRESHOLD  # Adjust this value to define "near bottom"
+
+        if (max_value == 0):
+            self.display_games_for_search_page(0)
+            return
+
+        if (value / max_value) >= threshold and not self.all_games_loaded:
+            self.display_games_for_search_page(self.current_page + 1)
+
+    def display_games_for_search_page(self, page_number):
+        logging.info(f"Getting search results for page {page_number}")
+        # Fetch data for the given page
+        fetched_games = self.get_games_by_page(page_number)
+
+        if not fetched_games:
+            self.all_games_loaded = True
+            return
+
+        self.current_page += 1
+
+        # Display each game in fetched data
+        for game in fetched_games:
             game_frame = QtWidgets.QFrame()
             game_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
             game_frame.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; border: 1px solid {BORDER_COLOR}; padding: 10px; border-radius: 8px;")
@@ -254,9 +294,10 @@ class FlashGameManager(QtWidgets.QMainWindow):
             if game_id == "fake_entry":
                 continue
 
-            img_label, successfully_loaded_img_label = self.load_icon_from_url_and_get_img_label(game_id)
+            img_label = self.load_icon_from_url_and_get_img_label(game_id)
             
             image_layout.addWidget(img_label)
+            self.game_image_layouts_dict[game_id] = image_layout
             self.addPlatformTagToLayout(game, image_layout)
             game_layout.addLayout(image_layout)
 
@@ -288,30 +329,70 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
 
             game_layout.addLayout(info_layout)
+            # Calculate the new scroll position to maintain visibility
+            new_scroll_pos = self.results_layout.count() * game_frame.height() - self.results_area.height()
+
+            # Set the scroll position smoothly (optional)
+            animation = QtCore.QPropertyAnimation(self.results_area.verticalScrollBar(), b"value")
+            animation.setDuration(100)
+            animation.setStartValue(self.results_area.verticalScrollBar().value())
+            animation.setEndValue(new_scroll_pos)
+            animation.start()
             self.results_layout.addWidget(game_frame)
 
-    def load_icon_from_url_and_get_img_label(self, game_id) -> tuple[QtWidgets.QLabel, bool]:
+        logging.info(f"Displayed search results for page {page_number}")
+        self.set_status_success(f"Displayed search results for page {page_number}", DEFAULT_STATUS_BAR_TIME)
+
+    def get_games_by_page(self, page_number: int) -> list:
+        page_index = page_number-1
+        start_num = page_index * PAGE_SIZE
+        end_num = (page_index+1) * PAGE_SIZE
+        return self.games_data[start_num:end_num]
+
+    def load_icon_from_url_and_get_img_label(self, game_id) -> QtWidgets.QLabel:
         img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
         img_path = os.path.join(self.data_folder, f"{game_id}.png")
-        if not os.path.exists(img_path):
-            try:
-                logging.info(f"Fetching image from URL: {img_url}")
-                img_data = requests.get(img_url).content
-                with open(img_path, 'wb') as f:
-                    f.write(img_data)
-            except Exception as e:
-                logging.error(f"Error loading image from URL: {img_url} - {e}")
-                img_label = QtWidgets.QLabel("No Image")
-                img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-                img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
-                return img_label, False
 
-        pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-        img_label = QtWidgets.QLabel()
-        img_label.setPixmap(pixmap)
-        img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-        img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
-        return img_label, True
+        # Create a placeholder label
+        placeholder_label = QtWidgets.QLabel("Loading...")
+        placeholder_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+        placeholder_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+
+        # Start the asynchronous image loading process
+        Thread(target=self.load_and_update_image, args=(game_id, img_url, img_path)).start()
+
+        return placeholder_label
+
+    def load_and_update_image(self, game_id, img_url, img_path):
+        try:
+            logging.info(f"Fetching image from URL: {img_url}")
+            img_data = requests.get(img_url).content
+            with open(img_path, 'wb') as f:
+                f.write(img_data)
+
+            pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            img_label = QtWidgets.QLabel()
+            img_label.setPixmap(pixmap)
+            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+
+            # Update the image layout in the main thread
+            logging.debug(f"Invoking update_image_layout on {game_id} with {img_label}")
+            QtCore.QMetaObject.invokeMethod(self, "update_image_layout", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, game_id), QtCore.Q_ARG(QtWidgets.QLabel, img_label))
+        except Exception as e:
+            logging.error(f"Error loading image from URL: {img_url} - {e}")
+            error_label = QtWidgets.QLabel()
+            error_label.setPixmap(pixmap)
+            error_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+            error_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+            logging.debug(f"Invoking update_image_layout on {game_id} with error label {error_label}")
+            QtCore.QMetaObject.invokeMethod(self, "update_image_layout", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, game_id), QtCore.Q_ARG(QtWidgets.QLabel, img_label))
+
+    @QtCore.pyqtSlot(str, QtWidgets.QLabel)
+    def update_image_layout(self, game_id, img_label):
+        if game_id in self.game_image_layouts_dict:
+            layout = self.game_image_layouts_dict[game_id]
+            layout.replaceWidget(0, img_label)
 
     def show_game_details(self, game):
         logging.info(f"Showing details for game: {game['title']}")
@@ -411,10 +492,10 @@ class FlashGameManager(QtWidgets.QMainWindow):
                 except Exception as e:
                     logging.error(f"Error caching screenshot for game: {game['title']} - {e}")
 
-            self.set_status_success("Game added to your collection.", 3000)
+            self.set_status_success("Game added to your collection.", DEFAULT_STATUS_BAR_TIME)
         else:
             logging.info(f"Game already in My Games: {game['title']}")
-            self.set_status_warning("This game is already in your collection.", 3000)
+            self.set_status_warning("This game is already in your collection.", DEFAULT_STATUS_BAR_TIME)
         # Update search view to reflect the change
         self.display_search_results()
 
@@ -536,7 +617,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.my_games.remove(game)
         self.update_my_games_view()
         self.save_my_games()
-        self.set_status_success("Game removed from your collection.", 3000)
+        self.set_status_success("Game removed from your collection.", DEFAULT_STATUS_BAR_TIME)
         # Update search view to reflect the change
         self.display_search_results()
 
