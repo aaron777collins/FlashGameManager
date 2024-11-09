@@ -1,5 +1,5 @@
 from threading import Thread
-from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 import requests
 import os
 import urllib.parse
@@ -353,46 +353,27 @@ class FlashGameManager(QtWidgets.QMainWindow):
         img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
         img_path = os.path.join(self.data_folder, f"{game_id}.png")
 
-        # Create a placeholder label
+        # Placeholder label while the image loads
         placeholder_label = QtWidgets.QLabel("Loading...")
         placeholder_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
         placeholder_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
 
-        # Start the asynchronous image loading process
-        Thread(target=self.load_and_update_image, args=(game_id, img_url, img_path)).start()
+        # Start asynchronous image loading with ImageDownloader
+        downloader = ImageDownloader(game_id, img_url, img_path)
+        downloader.image_loaded.connect(self.update_image_layout)
+        
+        # Optionally store downloader instance to keep a reference if needed
+        setattr(self, f"downloader_{game_id}", downloader)
 
         return placeholder_label
-
-    def load_and_update_image(self, game_id, img_url, img_path):
-        try:
-            logging.info(f"Fetching image from URL: {img_url}")
-            img_data = requests.get(img_url).content
-            with open(img_path, 'wb') as f:
-                f.write(img_data)
-
-            pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-            img_label = QtWidgets.QLabel()
-            img_label.setPixmap(pixmap)
-            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
-
-            # Update the image layout in the main thread
-            logging.debug(f"Invoking update_image_layout on {game_id} with {img_label}")
-            QtCore.QMetaObject.invokeMethod(self, "update_image_layout", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, game_id), QtCore.Q_ARG(QtWidgets.QLabel, img_label))
-        except Exception as e:
-            logging.error(f"Error loading image from URL: {img_url} - {e}")
-            error_label = QtWidgets.QLabel()
-            error_label.setPixmap(pixmap)
-            error_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-            error_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
-            logging.debug(f"Invoking update_image_layout on {game_id} with error label {error_label}")
-            QtCore.QMetaObject.invokeMethod(self, "update_image_layout", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, game_id), QtCore.Q_ARG(QtWidgets.QLabel, img_label))
 
     @QtCore.pyqtSlot(str, QtWidgets.QLabel)
     def update_image_layout(self, game_id, img_label):
         if game_id in self.game_image_layouts_dict:
             layout = self.game_image_layouts_dict[game_id]
-            layout.replaceWidget(0, img_label)
+            old_widget = layout.itemAt(0).widget()
+            layout.replaceWidget(old_widget, img_label)
+            old_widget.deleteLater()
 
     def show_game_details(self, game):
         logging.info(f"Showing details for game: {game['title']}")
@@ -646,6 +627,50 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.status_bar.setStyleSheet("background-color: lightgreen; color: black;")
         QtCore.QTimer.singleShot(time, lambda: self.status_bar.setStyleSheet(""))
         self.status_bar.showMessage(input, time)
+
+class ImageDownloader(QtCore.QObject):
+    image_loaded = QtCore.pyqtSignal(str, QtWidgets.QLabel)  # Signal emitted when image is loaded
+
+    def __init__(self, game_id, img_url, img_path):
+        super().__init__()
+        self.game_id = game_id
+        self.img_url = img_url
+        self.img_path = img_path
+        self.network_manager = QtNetwork.QNetworkAccessManager()
+        self.network_manager.finished.connect(self.on_image_downloaded)
+        self.start_download()
+
+    def start_download(self):
+        request = QtNetwork.QNetworkRequest(QtCore.QUrl(self.img_url))
+        self.network_manager.get(request)
+
+    @QtCore.pyqtSlot(QtNetwork.QNetworkReply)
+    def on_image_downloaded(self, reply: QtNetwork.QNetworkReply):
+        if reply.error() == QtNetwork.QNetworkReply.NoError:
+            # Save image to file
+            with open(self.img_path, 'wb') as f:
+                f.write(reply.readAll().data())
+            
+            # Load and scale the image
+            pixmap = QtGui.QPixmap(self.img_path).scaled(
+                ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT,
+                QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+            )
+
+            # Create the QLabel with the downloaded image
+            img_label = QtWidgets.QLabel()
+            img_label.setPixmap(pixmap)
+            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        else:
+            logging.error(f"Error loading image for {self.game_id} - {reply.errorString()}")
+            img_label = QtWidgets.QLabel("Error")
+            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+
+        # Emit signal to notify main widget to update layout
+        self.image_loaded.emit(self.game_id, img_label)
+        reply.deleteLater()
 
 if __name__ == "__main__":
     logging.info("Starting FlashGameManager application")
