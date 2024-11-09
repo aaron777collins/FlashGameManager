@@ -10,6 +10,8 @@ log/
 build-dir/
 Flashpoint/
 FlashpointCopy/
+python_packages/
+python_packages.tar.gz
 
 # C extensions
 *.so

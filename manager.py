@@ -1,3 +1,4 @@
+from io import BytesIO
 from threading import Thread
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 import requests
@@ -7,9 +8,12 @@ import json
 import sys
 import hashlib
 import logging
+from appdirs import user_data_dir
+from PIL import Image
 
-# Set up logging in Flatpak environment-compatible folder
-data_folder = os.getenv('XDG_DATA_HOME', '/app/data')
+data_dir = user_data_dir("FlashGameManager", "aaron777collins")
+os.makedirs(data_dir, exist_ok=True)
+data_folder = os.path.join(data_dir, 'data')
 log_folder = os.path.join(data_folder, 'FlashGameManager', 'log')
 if not os.path.exists(log_folder):
     os.makedirs(log_folder)
@@ -56,6 +60,25 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.cache_folder = os.path.join(self.data_folder, 'cache')
         self.my_games_file = os.path.join(self.data_folder, 'my_games.json')
         self.game_image_layouts_dict: dict[str, QtWidgets.QLayout] = {}
+
+        # Set a visible color for the main text fields and labels
+        self.setStyleSheet("""
+            QWidget {
+                color: white;  /* Set a general color for text */
+            }
+            QLabel {
+                color: #333333;  /* Set a dark color for labels */
+            }
+            QPushButton {
+                color: white;  /* Set a contrasting color for button text */
+            }
+            QLineEdit {
+                color: #333333;  /* Set text color for the search bar */
+                background-color: white;  /* Set background color for the search bar */
+                padding: 5px;  /* Optional: Add padding for better appearance */
+                border-radius: 4px;  /* Optional: Rounded corners */
+            }
+        """)
 
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
@@ -194,6 +217,13 @@ class FlashGameManager(QtWidgets.QMainWindow):
         close_button.setStyleSheet(f"background-color: {REMOVE_BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 10px; font-size: 14px; border-radius: 4px;")
         close_button.clicked.connect(lambda: self.tabs.setCurrentIndex(0))
         self.details_layout.addWidget(close_button)
+
+    def add_current_game_to_my_games(self):
+        if self.current_game is None:
+            logging.warning("No game is currently selected to add to My Games")
+            self.set_status_warning("No game is currently open to add to My Games.", DEFAULT_STATUS_BAR_TIME)
+            return
+        self.add_to_my_games(self.current_game)
 
     def cache_request(self, url):
         logging.info(f"Cache request for URL: {url}")
@@ -386,7 +416,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         for key, value in game.items():
             if isinstance(value, list):
                 value = ', '.join(value)
-            details += f"<b>{key.capitalize()}:</b> {value.replace('\n', '<br>')}<br>"
+            details += "<b>" + key.capitalize() + ":</b>" + value.replace('\n', '<br>') + "<br>"
         self.details_text.setHtml(details)
 
         # Clear previous images in the details view
@@ -474,7 +504,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             # Prepare the SteamTinkerLaunch command with adjusted paths
             steamtinkerlaunch_command = (
-                f"flatpak-spawn --host steamtinkerlaunch addnonsteamgame "
+                f"steamtinkerlaunch addnonsteamgame "
                 f"--appname=\"{game['title']}\" "
                 f"--exepath={clifp_exe_path} "
                 f"--launchoptions='play -i \"{game_id}\"' "
@@ -672,30 +702,56 @@ class ImageDownloader(QtCore.QObject):
     @QtCore.pyqtSlot(QtNetwork.QNetworkReply)
     def on_image_downloaded(self, reply: QtNetwork.QNetworkReply):
         if reply.error() == QtNetwork.QNetworkReply.NoError:
-            # Save image to file
-            with open(self.img_path, 'wb') as f:
-                f.write(reply.readAll().data())
+            try:
+                # Read image data from the reply
+                image_data = reply.readAll().data()
+                logging.info(f"Image for {self.game_id} downloaded successfully")
 
-            # Load and scale the image
-            pixmap = QtGui.QPixmap(self.img_path).scaled(
-                ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT,
-                QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
-            )
+                # Save image to file
+                with open(self.img_path, 'wb') as f:
+                    f.write(image_data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                logging.info(f"Image for {self.game_id} saved to {self.img_path}")
 
-            # Create the QLabel with the downloaded image
-            img_label = QtWidgets.QLabel()
-            img_label.setPixmap(pixmap)
-            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                # Load the image for display
+                image = Image.open(BytesIO(image_data)).convert("RGBA")
+                qt_image = QtGui.QImage(
+                    image.tobytes(), image.width, image.height, QtGui.QImage.Format_RGBA8888
+                )
+                pixmap = QtGui.QPixmap.fromImage(qt_image)
+
+                # Scale the QPixmap and set it on QLabel
+                if not pixmap.isNull():
+                    pixmap = pixmap.scaled(
+                        ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT,
+                        QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                    )
+                    img_label = QtWidgets.QLabel()
+                    img_label.setPixmap(pixmap)
+                    img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+                    img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                    logging.info(f"Image for {self.game_id} successfully loaded into QLabel.")
+                else:
+                    logging.warning("Warning: Loaded QPixmap is null.")
+                    img_label = self.create_error_label()
+            except Exception as e:
+                logging.error(f"Failed to save or load image for {self.game_id}: {e}")
+                img_label = self.create_error_label()
         else:
-            logging.error(f"Error loading image for {self.game_id} - {reply.errorString()}")
-            img_label = QtWidgets.QLabel("Error")
-            img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-            img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+            logging.error(f"Error downloading image for {self.game_id}: {reply.errorString()}")
+            img_label = self.create_error_label()
 
         # Emit signal to notify main widget to update layout
         self.image_loaded.emit(self.game_id, img_label)
         reply.deleteLater()
+
+    def create_error_label(self):
+        """Create a label indicating an error in loading the image."""
+        error_label = QtWidgets.QLabel("Error")
+        error_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+        error_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        return error_label
 
 if __name__ == "__main__":
     logging.info("Starting FlashGameManager application")
