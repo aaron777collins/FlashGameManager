@@ -24,6 +24,17 @@ SECONDARY_TEXT_COLOR = "#555555"
 WIDGET_BACKGROUND_COLOR = "#ffffff"
 BORDER_COLOR = "#d3d3d3"
 SCROLLBAR_COLOR = "#888888"
+INNER_FLASH_TAG_COLOR = "#D68B00"
+OUTER_FLASH_TAG_COLOR = "#FFE5B1"
+INNER_HTML5_TAG_COLOR = "#009ACD"
+OUTER_HTML5_TAG_COLOR = "#B0E0E6"
+INNER_OTHER_TAG_COLOR = "#555555"
+OUTER_OTHER_TAG_COLOR = "#CCCCCC"
+ICON_IMAGE_WIDTH = 200
+ICON_IMAGE_HEIGHT = 200
+SCREENSHOT_IMAGE_WIDTH = 400
+SCREENSHOT_IMAGE_HEIGHT = 200
+DESCRIPTION_CUTOFF = 300
 
 
 class FlashGameManager(QtWidgets.QMainWindow):
@@ -50,6 +61,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.load_my_games()
         self.init_ui()
         self.status_bar = QtWidgets.QStatusBar()
+        self.status_bar.setStyleSheet("background-color: none;")
         self.setStatusBar(self.status_bar)
 
     def init_ui(self):
@@ -205,7 +217,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         logging.info(f"Searching for game with query: {query}")
         if not query:
             logging.warning("Search input is empty")
-            QtWidgets.QMessageBox.warning(self, "Input Error", "Please enter a game title to search.")
+            self.set_status_warning("Search input is empty.", 3000)
             return
 
         encoded_query = urllib.parse.quote(query)
@@ -218,7 +230,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
             self.display_search_results()
         else:
             logging.error("Failed to fetch search results")
-            QtWidgets.QMessageBox.critical(self, "Error", "Failed to fetch search results.")
+            self.set_status_error("Failed to fetch search results.", 3000)
 
     def display_search_results(self):
         logging.info("Displaying search results")
@@ -235,67 +247,71 @@ class FlashGameManager(QtWidgets.QMainWindow):
             game_frame.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; border: 1px solid {BORDER_COLOR}; padding: 10px; border-radius: 8px;")
             game_layout = QtWidgets.QHBoxLayout(game_frame)
 
+            image_layout = QtWidgets.QVBoxLayout()
+
             # Fetch and display image
             game_id = game['id']
             if game_id == "fake_entry":
                 continue
 
-            img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
-            img_path = os.path.join(self.data_folder, f"{game_id}.png")
-            if not os.path.exists(img_path):
-                try:
-                    logging.info(f"Fetching image from URL: {img_url}")
-                    img_data = requests.get(img_url).content
-                    with open(img_path, 'wb') as f:
-                        f.write(img_data)
-                except Exception as e:
-                    logging.error(f"Error loading image from URL: {img_url} - {e}")
-                    img_label = QtWidgets.QLabel("No Image")
-                    img_label.setFixedSize(200, 150)
-                    game_layout.addWidget(img_label)
-                    continue
-
-            pixmap = QtGui.QPixmap(img_path).scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-            img_label = QtWidgets.QLabel()
-            img_label.setPixmap(pixmap)
-            img_label.setFixedSize(200, 150)
-            game_layout.addWidget(img_label)
+            img_label, successfully_loaded_img_label = self.load_icon_from_url_and_get_img_label(game_id)
+            
+            image_layout.addWidget(img_label)
+            self.addPlatformTagToLayout(game, image_layout)
+            game_layout.addLayout(image_layout)
 
             # Game info
             info_layout = QtWidgets.QVBoxLayout()
-            title_label = QtWidgets.QLabel(f"Title: {game['title']}")
-            title_label.setFont(QtGui.QFont("Helvetica", 14, QtGui.QFont.Bold))
-            title_label.setStyleSheet(f"color: {TEXT_COLOR};")
-            info_layout.addWidget(title_label)
 
-            if 'originalDescription' in game:
-                description = game['originalDescription']
-                if len(description) > 200:
-                    description = description[:200] + "..."
-                description_label = QtWidgets.QLabel(description)
-                description_label.setWordWrap(True)
-                description_label.setStyleSheet(f"color: {SECONDARY_TEXT_COLOR};")
-                info_layout.addWidget(description_label)
+            self.addTitleLayout(game, info_layout)
+            self.addDescription(game, info_layout)
 
             # Buttons
             details_button = QtWidgets.QPushButton("Details")
             details_button.setStyleSheet(f"background-color: {DETAILS_BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 8px; font-size: 14px; border-radius: 4px;")
             details_button.clicked.connect(lambda checked, g=game: self.show_game_details(g))
-            info_layout.addWidget(details_button)
+            bottom_buttons = []
+            bottom_buttons.append(details_button)
 
             if game in self.my_games:
-                remove_button = QtWidgets.QPushButton("Remove from My Games")
+                remove_button = QtWidgets.QPushButton("Remove")
                 remove_button.setStyleSheet(f"background-color: {REMOVE_BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 8px; font-size: 14px; border-radius: 4px;")
                 remove_button.clicked.connect(lambda checked, g=game: self.remove_from_my_games(g))
-                info_layout.addWidget(remove_button)
+                bottom_buttons.append(remove_button)
             else:
                 add_button = QtWidgets.QPushButton("Add to My Games")
                 add_button.setStyleSheet(f"background-color: {BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 8px; font-size: 14px; border-radius: 4px;")
                 add_button.clicked.connect(lambda checked, g=game: self.add_to_my_games(g))
-                info_layout.addWidget(add_button)
+                bottom_buttons.append(add_button)
+
+            self.add_bottom_aligned_buttons(info_layout, bottom_buttons, QtCore.Qt.AlignRight)
+
 
             game_layout.addLayout(info_layout)
             self.results_layout.addWidget(game_frame)
+
+    def load_icon_from_url_and_get_img_label(self, game_id) -> tuple[QtWidgets.QLabel, bool]:
+        img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
+        img_path = os.path.join(self.data_folder, f"{game_id}.png")
+        if not os.path.exists(img_path):
+            try:
+                logging.info(f"Fetching image from URL: {img_url}")
+                img_data = requests.get(img_url).content
+                with open(img_path, 'wb') as f:
+                    f.write(img_data)
+            except Exception as e:
+                logging.error(f"Error loading image from URL: {img_url} - {e}")
+                img_label = QtWidgets.QLabel("No Image")
+                img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+                img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                return img_label, False
+
+        pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        img_label = QtWidgets.QLabel()
+        img_label.setPixmap(pixmap)
+        img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
+        img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        return img_label, True
 
     def show_game_details(self, game):
         logging.info(f"Showing details for game: {game['title']}")
@@ -322,10 +338,10 @@ class FlashGameManager(QtWidgets.QMainWindow):
         # Game logo
         img_path = os.path.join(self.data_folder, f"{game_id}.png")
         if os.path.exists(img_path):
-            pixmap = QtGui.QPixmap(img_path).scaled(150, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
             logo_label = QtWidgets.QLabel()
             logo_label.setPixmap(pixmap)
-            logo_label.setFixedSize(150, 150)
+            logo_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
             logo_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
             self.image_layout.addWidget(logo_label)
 
@@ -342,10 +358,10 @@ class FlashGameManager(QtWidgets.QMainWindow):
                 logging.error(f"Error loading screenshot from URL: {screenshot_url} - {e}")
                 return
 
-        screenshot_pixmap = QtGui.QPixmap(screenshot_path).scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        screenshot_pixmap = QtGui.QPixmap(screenshot_path).scaled(SCREENSHOT_IMAGE_WIDTH, SCREENSHOT_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         screenshot_label = QtWidgets.QLabel()
         screenshot_label.setPixmap(screenshot_pixmap)
-        screenshot_label.setFixedSize(200, 150)
+        screenshot_label.setFixedSize(SCREENSHOT_IMAGE_WIDTH, SCREENSHOT_IMAGE_HEIGHT)
         screenshot_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
         self.image_layout.addWidget(screenshot_label)
 
@@ -395,10 +411,10 @@ class FlashGameManager(QtWidgets.QMainWindow):
                 except Exception as e:
                     logging.error(f"Error caching screenshot for game: {game['title']} - {e}")
 
-            self.status_bar.showMessage("Game added to your collection.", 3000)
+            self.set_status_success("Game added to your collection.", 3000)
         else:
             logging.info(f"Game already in My Games: {game['title']}")
-            self.status_bar.showMessage("This game is already in your collection.", 3000)
+            self.set_status_warning("This game is already in your collection.", 3000)
         # Update search view to reflect the change
         self.display_search_results()
 
@@ -422,61 +438,105 @@ class FlashGameManager(QtWidgets.QMainWindow):
             game_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
             game_frame.setStyleSheet(f"background-color: {WIDGET_BACKGROUND_COLOR}; border: 1px solid {BORDER_COLOR}; padding: 10px; border-radius: 8px;")
             game_layout = QtWidgets.QHBoxLayout(game_frame)
-            game_frame.setMaximumHeight(200)
+
+            image_layout = QtWidgets.QVBoxLayout()
 
             # Fetch and display image
             game_id = game['id']
             img_path = os.path.join(self.data_folder, f"{game_id}.png")
             if os.path.exists(img_path):
-                pixmap = QtGui.QPixmap(img_path).scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
                 img_label = QtWidgets.QLabel()
                 img_label.setPixmap(pixmap)
-                img_label.setFixedSize(200, 150)
+                img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
                 img_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
-                game_layout.addWidget(img_label)
+                img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                image_layout.addWidget(img_label)
             else:
                 img_label = QtWidgets.QLabel("No Image")
-                img_label.setFixedSize(200, 150)
+                img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
                 img_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
-                game_layout.addWidget(img_label)
+                img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                image_layout.addWidget(img_label)
+            self.addPlatformTagToLayout(game, image_layout)
+            game_layout.addLayout(image_layout)
 
             # Game info
             info_layout = QtWidgets.QVBoxLayout()
-            title_label = QtWidgets.QLabel(f"Title: {game['title']}")
-            title_label.setFont(QtGui.QFont("Helvetica", 14, QtGui.QFont.Bold))
-            title_label.setStyleSheet(f"color: {TEXT_COLOR};")
-            info_layout.addWidget(title_label)
-
-            if 'originalDescription' in game:
-                description = game['originalDescription']
-                if len(description) > 200:
-                    description = description[:200] + "..."
-                description_label = QtWidgets.QLabel(description)
-                description_label.setWordWrap(True)
-                description_label.setStyleSheet(f"color: {SECONDARY_TEXT_COLOR};")
-                description_label.setMaximumHeight(60)  # Limit the description height
-                info_layout.addWidget(description_label)
+            
+            self.addTitleLayout(game, info_layout)
+            self.addDescription(game, info_layout)
 
             # Buttons
             details_button = QtWidgets.QPushButton("Details")
             details_button.setStyleSheet(f"background-color: {DETAILS_BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 8px; font-size: 14px; border-radius: 4px;")
             details_button.clicked.connect(lambda checked, g=game: self.show_game_details(g))
-            info_layout.addWidget(details_button)
 
             remove_button = QtWidgets.QPushButton("Remove")
             remove_button.setStyleSheet(f"background-color: {REMOVE_BUTTON_COLOR}; color: {BUTTON_TEXT_COLOR}; padding: 8px; font-size: 14px; border-radius: 4px;")
             remove_button.clicked.connect(lambda checked, g=game: self.remove_from_my_games(g))
-            info_layout.addWidget(remove_button)
+
+            self.add_bottom_aligned_buttons(info_layout, [details_button, remove_button], QtCore.Qt.AlignRight)
 
             game_layout.addLayout(info_layout)
             self.my_games_layout.addWidget(game_frame)
+
+    def addTitleLayout(self, game, info_layout: QtWidgets.QVBoxLayout):
+        title_label = QtWidgets.QLabel(f"{game['title']}")
+        title_label.setFont(QtGui.QFont("Helvetica", 14, QtGui.QFont.Bold))
+        title_label.setStyleSheet(f"color: {TEXT_COLOR};")
+        info_layout.addWidget(title_label)
+
+    def addDescription(self, game, info_layout: QtWidgets.QBoxLayout):
+        if 'originalDescription' in game:
+                description = game['originalDescription']
+                if len(description) > DESCRIPTION_CUTOFF:
+                    description = description[:DESCRIPTION_CUTOFF] + "..."
+                description_label = QtWidgets.QLabel(description)
+                description_label.setWordWrap(True)
+                description_label.setStyleSheet(f"color: {SECONDARY_TEXT_COLOR};")
+                description_label.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+                info_layout.addWidget(description_label)
+
+    def addPlatformTagToLayout(self, game, layout: QtWidgets.QBoxLayout):
+        if 'platform' in game:
+            platform_name = game['platform']
+            if platform_name.lower() == 'flash':
+                platform_inner_color = INNER_FLASH_TAG_COLOR
+                platform_outer_color = OUTER_FLASH_TAG_COLOR
+            elif platform_name.lower() == 'html5':
+                platform_inner_color = INNER_HTML5_TAG_COLOR
+                platform_outer_color = OUTER_HTML5_TAG_COLOR
+            else:
+                platform_inner_color = INNER_OTHER_TAG_COLOR
+                platform_outer_color = OUTER_OTHER_TAG_COLOR
+
+            platform_label = QtWidgets.QLabel(f"{platform_name}")
+            platform_label.setStyleSheet(f"""
+                color: {platform_inner_color};
+                background-color: {platform_outer_color};
+                font-size: 16px;
+                padding: 4px 8px;  /* Reduced padding to minimize width */
+                border-radius: 4px;
+                max-height: 18px;
+            """)
+            platform_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)  # Force the platform label to be minimal
+            platform_label.setAlignment(QtCore.Qt.AlignCenter)  # Center-align text inside the label
+            layout.addWidget(platform_label, alignment=QtCore.Qt.AlignBottom)
+
+    def add_bottom_aligned_buttons(self, input_layout: QtWidgets.QBoxLayout, input_buttons: list[QtWidgets.QPushButton], horizontalAlignment: QtCore.Qt.AlignmentFlag):
+        horizontal_layout = QtWidgets.QHBoxLayout()
+        for button in input_buttons:
+            horizontal_layout.addWidget(button, horizontalAlignment)
+        horizontal_layout.setAlignment(QtCore.Qt.AlignBottom)
+        input_layout.addLayout(horizontal_layout)
 
     def remove_from_my_games(self, game):
         logging.info(f"Removing game from My Games: {game['title']}")
         self.my_games.remove(game)
         self.update_my_games_view()
         self.save_my_games()
-        self.status_bar.showMessage("Game removed from your collection.", 3000)
+        self.set_status_success("Game removed from your collection.", 3000)
         # Update search view to reflect the change
         self.display_search_results()
 
@@ -491,6 +551,20 @@ class FlashGameManager(QtWidgets.QMainWindow):
             with open(self.my_games_file, 'r') as f:
                 self.my_games = json.load(f)
 
+    def set_status_warning(self, input: str, time: int):
+        self.status_bar.setStyleSheet("background-color: yellow; color: black;")
+        QtCore.QTimer.singleShot(time, lambda: self.status_bar.setStyleSheet(""))
+        self.status_bar.showMessage(input, time)
+
+    def set_status_error(self, input: str, time: int):
+        self.status_bar.setStyleSheet("background-color: red; color: white;")
+        QtCore.QTimer.singleShot(time, lambda: self.status_bar.setStyleSheet(""))
+        self.status_bar.showMessage(input, time)
+
+    def set_status_success(self, input: str, time: int):
+        self.status_bar.setStyleSheet("background-color: lightgreen; color: black;")
+        QtCore.QTimer.singleShot(time, lambda: self.status_bar.setStyleSheet(""))
+        self.status_bar.showMessage(input, time)
 
 if __name__ == "__main__":
     logging.info("Starting FlashGameManager application")
