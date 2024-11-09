@@ -1,0 +1,20 @@
+id: com.aaron777collins.FlashGameManager
+runtime: org.kde.Platform
+runtime-version: "5.15"  # Adjust if needed based on your dependencies
+sdk: org.kde.Sdk
+command: manager.py
+modules:
+  - name: FlashGameManager
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin
+      - install -D manager.py /app/bin/manager.py
+      - pip3 install --prefix=/app PyQt5 requests Pillow
+    sources:
+      - type: file
+        path: ./manager.py  # Replace with the path to your `manager.py`
+
+  - name: mesa
+    buildsystem: simple
+    build-commands:
+      - sudo pacman -Sy --noconfirm mesa  # Add other dependencies if needed

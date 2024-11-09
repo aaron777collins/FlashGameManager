@@ -8,8 +8,9 @@ import sys
 import hashlib
 import logging
 
-# Set up logging
-log_folder = os.path.join(os.path.dirname(__file__), 'log')
+# Set up logging in Flatpak environment-compatible folder
+data_folder = os.getenv('XDG_DATA_HOME', '/app/data')
+log_folder = os.path.join(data_folder, 'FlashGameManager', 'log')
 if not os.path.exists(log_folder):
     os.makedirs(log_folder)
 logging.basicConfig(filename=os.path.join(log_folder, 'flash_game_manager.log'), level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -51,7 +52,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.games_data = []
         self.my_games = []
         self.current_game = None
-        self.data_folder = os.path.join(os.path.dirname(__file__), 'game_data')
+        self.data_folder = os.path.join(data_folder, 'FlashGameManager', 'game_data')
         self.cache_folder = os.path.join(self.data_folder, 'cache')
         self.my_games_file = os.path.join(self.data_folder, 'my_games.json')
         self.game_image_layouts_dict: dict[str, QtWidgets.QLayout] = {}
@@ -295,7 +296,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
                 continue
 
             img_label = self.load_icon_from_url_and_get_img_label(game_id)
-            
+
             image_layout.addWidget(img_label)
             self.game_image_layouts_dict[game_id] = image_layout
             self.addPlatformTagToLayout(game, image_layout)
@@ -361,7 +362,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         # Start asynchronous image loading with ImageDownloader
         downloader = ImageDownloader(game_id, img_url, img_path)
         downloader.image_loaded.connect(self.update_image_layout)
-        
+
         # Optionally store downloader instance to keep a reference if needed
         setattr(self, f"downloader_{game_id}", downloader)
 
@@ -446,13 +447,6 @@ class FlashGameManager(QtWidgets.QMainWindow):
         else:
             self.add_to_my_games_button.show()
 
-    def add_current_game_to_my_games(self):
-        if self.current_game is None:
-            logging.warning("No game is currently selected to add to My Games")
-            QtWidgets.QMessageBox.warning(self, "No Game Selected", "No game is currently open to add to My Games.")
-            return
-        self.add_to_my_games(self.current_game)
-
     def add_to_my_games(self, game):
         logging.info(f"Adding game to My Games: {game['title']}")
         if game not in self.my_games:
@@ -473,10 +467,41 @@ class FlashGameManager(QtWidgets.QMainWindow):
                 except Exception as e:
                     logging.error(f"Error caching screenshot for game: {game['title']} - {e}")
 
-            self.set_status_success("Game added to your collection.", DEFAULT_STATUS_BAR_TIME)
+            # Set paths and commands compatible with Flatpak
+            flashpoint_dir = os.path.join(self.data_folder, "Flashpoint")
+            clifp_exe_path = os.path.join(flashpoint_dir, "CLIFp.exe")
+            proton_ge_version = "GE-Proton9-16"  # Ensure this version is accessible within Flatpak
+
+            # Prepare the SteamTinkerLaunch command with adjusted paths
+            steamtinkerlaunch_command = (
+                f"flatpak-spawn --host steamtinkerlaunch addnonsteamgame "
+                f"--appname=\"{game['title']}\" "
+                f"--exepath={clifp_exe_path} "
+                f"--launchoptions='play -i \"{game_id}\"' "
+                f"--startdir=\"{flashpoint_dir}\" "
+                f"--iconpath=\"{os.path.join(self.data_folder, f'{game_id}.png')}\" "
+                f"--compatibilitytool=\"{proton_ge_version}\""
+            )
+
+            # Debug: Print the constructed command
+            print("\n[DEBUG] SteamTinkerLaunch Command:")
+            print(steamtinkerlaunch_command)
+
+            # Execute the command if permissions allow
+            try:
+                result = os.system(steamtinkerlaunch_command)
+                if result == 0:
+                    self.set_status_success("Game added to your collection.", DEFAULT_STATUS_BAR_TIME)
+                else:
+                    logging.error("Failed to add game with SteamTinkerLaunch.")
+                    self.set_status_error("Error adding game to collection.", DEFAULT_STATUS_BAR_TIME)
+            except Exception as e:
+                logging.error(f"Error executing SteamTinkerLaunch command: {e}")
+                self.set_status_error("Failed to add game due to execution error.", DEFAULT_STATUS_BAR_TIME)
         else:
             logging.info(f"Game already in My Games: {game['title']}")
             self.set_status_warning("This game is already in your collection.", DEFAULT_STATUS_BAR_TIME)
+
         # Update search view to reflect the change
         self.display_search_results()
 
@@ -525,7 +550,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             # Game info
             info_layout = QtWidgets.QVBoxLayout()
-            
+
             self.addTitleLayout(game, info_layout)
             self.addDescription(game, info_layout)
 
@@ -650,7 +675,7 @@ class ImageDownloader(QtCore.QObject):
             # Save image to file
             with open(self.img_path, 'wb') as f:
                 f.write(reply.readAll().data())
-            
+
             # Load and scale the image
             pixmap = QtGui.QPixmap(self.img_path).scaled(
                 ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT,

@@ -6,6 +6,10 @@ __pycache__/
 venv/
 game_data/
 log/
+.flatpak-builder/
+build-dir/
+Flashpoint/
+FlashpointCopy/
 
 # C extensions
 *.so
