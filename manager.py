@@ -381,7 +381,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
         return self.games_data[start_num:end_num]
 
     def load_icon_from_url_and_get_img_label(self, game_id) -> QtWidgets.QLabel:
-        img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
+        img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=png"
         img_path = os.path.join(self.data_folder, f"{game_id}.png")
 
         # Placeholder label while the image loads
@@ -439,7 +439,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
             self.image_layout.addWidget(logo_label)
 
         # Game screenshot
-        screenshot_url = f"https://infinity.unstable.life/images/Screenshots/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
+        screenshot_url = f"https://infinity.unstable.life/images/Screenshots/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=png"
         screenshot_path = os.path.join(self.data_folder, f"{game_id}_screenshot.png")
         if not os.path.exists(screenshot_path):
             try:
@@ -486,7 +486,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             # Cache the screenshot in advance for offline use
             game_id = game['id']
-            screenshot_url = f"https://infinity.unstable.life/images/Screenshots/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=jpg"
+            screenshot_url = f"https://infinity.unstable.life/images/Screenshots/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=png"
             screenshot_path = os.path.join(self.data_folder, f"{game_id}_screenshot.png")
             if not os.path.exists(screenshot_path):
                 try:
@@ -558,23 +558,27 @@ class FlashGameManager(QtWidgets.QMainWindow):
 
             image_layout = QtWidgets.QVBoxLayout()
 
-            # Fetch and display image
+            # Fetch and display image using ImageDownloader
             game_id = game['id']
             img_path = os.path.join(self.data_folder, f"{game_id}.png")
             if os.path.exists(img_path):
-                pixmap = QtGui.QPixmap(img_path).scaled(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-                img_label = QtWidgets.QLabel()
-                img_label.setPixmap(pixmap)
-                img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
-                img_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
-                img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+                # Load the image if it exists locally
+                img_label = self.load_image_synchronously(game_id, img_path, ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
                 image_layout.addWidget(img_label)
             else:
-                img_label = QtWidgets.QLabel("No Image")
+                # Create placeholder and download image asynchronously
+                img_label = QtWidgets.QLabel("Loading...")
                 img_label.setFixedSize(ICON_IMAGE_WIDTH, ICON_IMAGE_HEIGHT)
                 img_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
                 img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
                 image_layout.addWidget(img_label)
+
+                img_url = f"https://infinity.unstable.life/images/Logos/{game_id[:2]}/{game_id[2:4]}/{game_id}.png?type=png"
+                downloader = ImageDownloader(game_id, img_url, img_path)
+                downloader.image_loaded.connect(self.update_image_layout)
+                setattr(self, f"downloader_{game_id}", downloader)  # Keep reference to prevent garbage collection
+
+            self.game_image_layouts_dict[game_id] = image_layout  # Store layout reference for updates
             self.addPlatformTagToLayout(game, image_layout)
             game_layout.addLayout(image_layout)
 
@@ -682,6 +686,44 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.status_bar.setStyleSheet("background-color: lightgreen; color: black;")
         QtCore.QTimer.singleShot(time, lambda: self.status_bar.setStyleSheet(""))
         self.status_bar.showMessage(input, time)
+
+    def load_image_synchronously(self, game_id: str, img_path: str, img_width: int, img_height: int) -> QtWidgets.QLabel:
+        """
+        Load an image synchronously from a given path and return an QLabel with the image.
+        If the image is not available or fails to load, return a QLabel with a placeholder.
+
+        :param game_id: Unique identifier for the game
+        :param img_path: Path to the image file
+        :param img_width: Width of the image to display
+        :param img_height: Height of the image to display
+        :return: QLabel containing the loaded image or a placeholder
+        """
+        logging.info(f"Attempting to load image for game ID {game_id} from path: {img_path}")
+
+        # Create QLabel for the image
+        img_label = QtWidgets.QLabel()
+        img_label.setFixedSize(img_width, img_height)
+        img_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        img_label.setStyleSheet(f"border: 1px solid {BORDER_COLOR}; border-radius: 8px;")
+
+        # Check if the image file exists
+        if os.path.exists(img_path):
+            pixmap = QtGui.QPixmap(img_path)
+            if not pixmap.isNull():
+                # Scale pixmap to desired size and set it on QLabel
+                pixmap = pixmap.scaled(img_width, img_height, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                img_label.setPixmap(pixmap)
+                logging.info(f"Image for game ID {game_id} loaded successfully.")
+            else:
+                # If pixmap is null, set placeholder text
+                logging.warning(f"Image at {img_path} could not be loaded. Using placeholder.")
+                img_label.setText("Error: Could not load image")
+        else:
+            # If image file doesn't exist, set placeholder text
+            logging.warning(f"Image file does not exist at {img_path}. Using placeholder.")
+            img_label.setText("No Image")
+
+        return img_label
 
 class ImageDownloader(QtCore.QObject):
     image_loaded = QtCore.pyqtSignal(str, QtWidgets.QLabel)  # Signal emitted when image is loaded

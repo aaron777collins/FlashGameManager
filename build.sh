@@ -49,10 +49,7 @@ else
 fi
 
 # Step 7: Create a startup script to set environment variables for Qt plugins and libraries
-echo '#!/bin/bash' > dist/FlashGameManager/run_manager.sh
-echo 'export QT_QPA_PLATFORM_PLUGIN_PATH=$PWD/platforms' >> dist/FlashGameManager/run_manager.sh
-echo 'export LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH' >> dist/FlashGameManager/run_manager.sh
-echo './manager' >> dist/FlashGameManager/run_manager.sh
+cp run_manager.sh dist/FlashGameManager/run_manager.sh
 chmod +x dist/FlashGameManager/run_manager.sh
 
 # Notify user
