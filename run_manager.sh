@@ -3,29 +3,52 @@
 # Set the path to the Qt platform plugins
 export QT_QPA_PLATFORM_PLUGIN_PATH=$PWD/platforms
 
-# Preload OpenSSL 1.1 library to ensure compatibility
-export LD_PRELOAD=$PWD/lib/libssl.so.1.1:$PWD/lib/libcrypto.so.1.1
-
 # Add the custom lib folder and OpenSSL 1.1 path to the library path
 export LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH
 
-# Additional environment variables for XCB
-export QT_XCB_GL_INTEGRATION=none
-export QT_DEBUG_PLUGINS=1  # Enables debug output for Qt plugin loading
-
 # Define the target data directory path
-TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/Flashpoint"
+FLASHPOINT_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/Flashpoint"
 
 # Check if the Flashpoint folder already exists at the target location
-if [ ! -d "$TARGET_DATA_DIR" ]; then
+if [ ! -d "$FLASHPOINT_TARGET_DATA_DIR" ]; then
     # Ensure the target directory exists
-    mkdir -p "$TARGET_DATA_DIR"
+    mkdir -p "$FLASHPOINT_TARGET_DATA_DIR"
 
     # Copy the Flashpoint folder and its contents to the target data directory
-    cp -r Flashpoint/* "$TARGET_DATA_DIR"
-    echo "Flashpoint folder copied to $TARGET_DATA_DIR"
+    cp -r Flashpoint/* "$FLASHPOINT_TARGET_DATA_DIR"
+    echo "Flashpoint folder copied to $FLASHPOINT_TARGET_DATA_DIR"
 else
-    echo "Flashpoint folder already exists at $TARGET_DATA_DIR; skipping copy."
+    echo "Flashpoint folder already exists at $FLASHPOINT_TARGET_DATA_DIR; skipping copy."
+fi
+
+# Define the target data directory path
+STEAMTINKERLAUNCH_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/SteamTinkerLaunch"
+
+# Check if the SteamTinkerLaunch folder already exists at the target location
+if [ ! -d "$STEAMTINKERLAUNCH_TARGET_DATA_DIR" ]; then
+    # Ensure the target directory exists
+    mkdir -p "$STEAMTINKERLAUNCH_TARGET_DATA_DIR"
+
+    # Copy the SteamTinkerLaunch folder and its contents to the target data directory
+    cp -r SteamTinkerLaunch/* "$STEAMTINKERLAUNCH_TARGET_DATA_DIR"
+    echo "SteamTinkerLaunch folder copied to $STEAMTINKERLAUNCH_TARGET_DATA_DIR"
+else
+    echo "SteamTinkerLaunch folder already exists at $STEAMTINKERLAUNCH_TARGET_DATA_DIR; skipping copy."
+fi
+
+# Define the target data directory path
+IMAGES_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/images"
+
+# Check if the SteamTinkerLaunch folder already exists at the target location
+if [ ! -d "$IMAGES_TARGET_DATA_DIR" ]; then
+    # Ensure the target directory exists
+    mkdir -p "$IMAGES_TARGET_DATA_DIR"
+
+    # Copy the SteamTinkerLaunch folder and its contents to the target data directory
+    cp -r images/* "$IMAGES_TARGET_DATA_DIR"
+    echo "images folder copied to $IMAGES_TARGET_DATA_DIR"
+else
+    echo "images folder already exists at $IMAGES_TARGET_DATA_DIR; skipping copy."
 fi
 
 # Run the PyInstaller-built executable

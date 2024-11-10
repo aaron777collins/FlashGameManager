@@ -10,6 +10,7 @@ import hashlib
 import logging
 from appdirs import user_data_dir
 from PIL import Image
+import subprocess
 
 data_dir = user_data_dir("FlashGameManager", "aaron777collins")
 os.makedirs(data_dir, exist_ok=True)
@@ -57,28 +58,11 @@ class FlashGameManager(QtWidgets.QMainWindow):
         self.my_games = []
         self.current_game = None
         self.data_folder = os.path.join(data_folder, 'FlashGameManager', 'game_data')
+        self.steam_tinker_launch_exec = os.path.join(self.data_folder, 'SteamTinkerLaunch', 'steamtinkerlaunch')
+        self.images_folder = os.path.join(self.data_folder, 'images')
         self.cache_folder = os.path.join(self.data_folder, 'cache')
         self.my_games_file = os.path.join(self.data_folder, 'my_games.json')
         self.game_image_layouts_dict: dict[str, QtWidgets.QLayout] = {}
-
-        # Set a visible color for the main text fields and labels
-        self.setStyleSheet("""
-            QWidget {
-                color: white;  /* Set a general color for text */
-            }
-            QLabel {
-                color: #333333;  /* Set a dark color for labels */
-            }
-            QPushButton {
-                color: white;  /* Set a contrasting color for button text */
-            }
-            QLineEdit {
-                color: #333333;  /* Set text color for the search bar */
-                background-color: white;  /* Set background color for the search bar */
-                padding: 5px;  /* Optional: Add padding for better appearance */
-                border-radius: 4px;  /* Optional: Rounded corners */
-            }
-        """)
 
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
@@ -87,6 +71,7 @@ class FlashGameManager(QtWidgets.QMainWindow):
             os.makedirs(self.cache_folder)
             logging.info(f"Created cache folder: {self.cache_folder}")
 
+        self.setWindowIcon(QtGui.QIcon(os.path.join(self.images_folder, 'icon_128x128.ico')))
         self.load_my_games()
         self.init_ui()
         self.status_bar = QtWidgets.QStatusBar()
@@ -503,27 +488,30 @@ class FlashGameManager(QtWidgets.QMainWindow):
             proton_ge_version = "GE-Proton9-16"  # Ensure this version is accessible within Flatpak
 
             # Prepare the SteamTinkerLaunch command with adjusted paths
-            steamtinkerlaunch_command = (
-                f"steamtinkerlaunch addnonsteamgame "
-                f"--appname=\"{game['title']}\" "
-                f"--exepath={clifp_exe_path} "
-                f"--launchoptions='play -i \"{game_id}\"' "
-                f"--startdir=\"{flashpoint_dir}\" "
-                f"--iconpath=\"{os.path.join(self.data_folder, f'{game_id}.png')}\" "
-                f"--compatibilitytool=\"{proton_ge_version}\""
-            )
+            steamtinkerlaunch_command = [
+                self.steam_tinker_launch_exec, "addnonsteamgame",
+                f"--appname={game['title']}",
+                f"--exepath={clifp_exe_path}",
+                f"--launchoptions=play -i \"{game_id}\"",
+                f"--startdir={flashpoint_dir}",
+                f"--iconpath={os.path.join(self.data_folder, f'{game_id}.png')}",
+                f"--compatibilitytool={proton_ge_version}"
+            ]
 
             # Debug: Print the constructed command
-            print("\n[DEBUG] SteamTinkerLaunch Command:")
-            print(steamtinkerlaunch_command)
+            logging.debug("SteamTinkerLaunch Command: " + " ".join(steamtinkerlaunch_command))
 
             # Execute the command if permissions allow
             try:
-                result = os.system(steamtinkerlaunch_command)
-                if result == 0:
+                result = subprocess.run(steamtinkerlaunch_command, capture_output=True, text=True)
+                if result.returncode == 0:
+                    logging.info(f"The game {game['title']} was added to Steam.")
                     self.set_status_success("Game added to your collection.", DEFAULT_STATUS_BAR_TIME)
                 else:
-                    logging.error("Failed to add game with SteamTinkerLaunch.")
+                    logging.error(
+                        f"Failed to add game with SteamTinkerLaunch. "
+                        f"Command output: {result.stdout}, Command error: {result.stderr}"
+                    )
                     self.set_status_error("Error adding game to collection.", DEFAULT_STATUS_BAR_TIME)
             except Exception as e:
                 logging.error(f"Error executing SteamTinkerLaunch command: {e}")
@@ -622,25 +610,16 @@ class FlashGameManager(QtWidgets.QMainWindow):
     def addPlatformTagToLayout(self, game, layout: QtWidgets.QBoxLayout):
         if 'platform' in game:
             platform_name = game['platform']
-            if platform_name.lower() == 'flash':
-                platform_inner_color = INNER_FLASH_TAG_COLOR
-                platform_outer_color = OUTER_FLASH_TAG_COLOR
-            elif platform_name.lower() == 'html5':
-                platform_inner_color = INNER_HTML5_TAG_COLOR
-                platform_outer_color = OUTER_HTML5_TAG_COLOR
-            else:
-                platform_inner_color = INNER_OTHER_TAG_COLOR
-                platform_outer_color = OUTER_OTHER_TAG_COLOR
-
             platform_label = QtWidgets.QLabel(f"{platform_name}")
-            platform_label.setStyleSheet(f"""
-                color: {platform_inner_color};
-                background-color: {platform_outer_color};
-                font-size: 16px;
-                padding: 4px 8px;  /* Reduced padding to minimize width */
-                border-radius: 4px;
-                max-height: 18px;
-            """)
+            if platform_name.lower() == 'flash':
+                platform_label.setObjectName("flashTag")
+                platform_label.setStyleSheet(f"background-color: {OUTER_FLASH_TAG_COLOR}")
+            elif platform_name.lower() == 'html5':
+                platform_label.setObjectName("html5Tag")
+                platform_label.setStyleSheet(f"background-color: {OUTER_HTML5_TAG_COLOR}")
+            else:
+                platform_label.setObjectName("otherTag")
+                platform_label.setStyleSheet(f"background-color: {OUTER_OTHER_TAG_COLOR}")
             platform_label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)  # Force the platform label to be minimal
             platform_label.setAlignment(QtCore.Qt.AlignCenter)  # Center-align text inside the label
             layout.addWidget(platform_label, alignment=QtCore.Qt.AlignBottom)
@@ -798,6 +777,75 @@ class ImageDownloader(QtCore.QObject):
 if __name__ == "__main__":
     logging.info("Starting FlashGameManager application")
     app = QtWidgets.QApplication(sys.argv)
+    # Create stylesheet with variables
+    app.setStyleSheet(f"""
+    QWidget {{
+        background-color: {BACKGROUND_COLOR};
+        color: {TEXT_COLOR};
+    }}
+    QPushButton {{
+        background-color: {BUTTON_COLOR};
+        color: {BUTTON_TEXT_COLOR};
+        padding: 8px;
+        font-size: 14px;
+        border-radius: 4px;
+    }}
+    QPushButton#detailsButton {{
+        background-color: {DETAILS_BUTTON_COLOR};
+        color: {BUTTON_TEXT_COLOR};
+    }}
+    QPushButton#removeButton {{
+        background-color: {REMOVE_BUTTON_COLOR};
+        color: {BUTTON_TEXT_COLOR};
+    }}
+    QLabel {{
+        color: {TEXT_COLOR};
+    }}
+    QLineEdit {{
+        background-color: white;
+        color: {TEXT_COLOR};
+        padding: 5px;
+        border-radius: 4px;
+    }}
+    QScrollArea {{
+        background-color: {BACKGROUND_COLOR};
+    }}
+    QTextEdit {{
+        background-color: {WIDGET_BACKGROUND_COLOR};
+        color: {TEXT_COLOR};
+        padding: 10px;
+        border: 1px solid {BORDER_COLOR};
+    }}
+    QScrollBar:vertical {{
+        background: {BACKGROUND_COLOR};
+        width: 8px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {SCROLLBAR_COLOR};
+        border-radius: 4px;
+    }}
+    QLabel#flashTag {{
+        color: {INNER_FLASH_TAG_COLOR};
+        background-color: {OUTER_FLASH_TAG_COLOR};
+        font-size: 16px;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }}
+    QLabel#html5Tag {{
+        color: {INNER_HTML5_TAG_COLOR};
+        background-color: {OUTER_HTML5_TAG_COLOR};
+        font-size: 16px;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }}
+    QLabel#otherTag {{
+        color: {INNER_OTHER_TAG_COLOR};
+        background-color: {OUTER_OTHER_TAG_COLOR};
+        font-size: 16px;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }}
+""")
     window = FlashGameManager()
     window.show()
     sys.exit(app.exec_())

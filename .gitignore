@@ -12,6 +12,8 @@ Flashpoint/
 FlashpointCopy/
 python_packages/
 python_packages.tar.gz
+SteamTinkerLaunch
+FlashPointAndSteamTinkerLaunch.zip
 
 # C extensions
 *.so
