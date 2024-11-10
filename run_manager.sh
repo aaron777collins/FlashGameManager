@@ -9,6 +9,8 @@ export LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH
 # Define the target data directory path
 FLASHPOINT_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/Flashpoint"
 
+echo "Initializing.."
+
 # Check if the Flashpoint folder already exists at the target location
 if [ ! -d "$FLASHPOINT_TARGET_DATA_DIR" ]; then
     # Ensure the target directory exists
