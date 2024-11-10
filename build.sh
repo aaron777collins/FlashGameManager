@@ -14,7 +14,7 @@ cp dist/manager dist/FlashGameManager/manager
 cp -r Flashpoint/ dist/FlashGameManager/Flashpoint
 cp -r SteamTinkerLaunch/ dist/FlashGameManager/SteamTinkerLaunch
 mkdir -p dist/FlashGameManager/images
-cp images/icon_128x128.ico dist/FlashGameManager/images/icon_128x128.ico
+cp -r images/ dist/FlashGameManager
 
 # Step 4: Locate and copy the required Qt platform plugins
 QT_PLUGINS_DIR=$(find $(python -c "import PyQt5; print(PyQt5.__path__[0])") -type d -name "platforms" | head -n 1)

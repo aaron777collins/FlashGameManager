@@ -71,7 +71,11 @@ class FlashGameManager(QtWidgets.QMainWindow):
             os.makedirs(self.cache_folder)
             logging.info(f"Created cache folder: {self.cache_folder}")
 
-        self.setWindowIcon(QtGui.QIcon(os.path.join(self.images_folder, 'icon_128x128.ico')))
+        self.window_icon_path = os.path.join(self.images_folder, 'icon_128x128.png')
+        logging.info(f"Loading window icon from {self.window_icon_path}")
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(self.window_icon_path), QtGui.QIcon.Selected, QtGui.QIcon.On)
+        self.setWindowIcon(icon)
         self.load_my_games()
         self.init_ui()
         self.status_bar = QtWidgets.QStatusBar()
