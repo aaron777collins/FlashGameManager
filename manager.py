@@ -487,19 +487,16 @@ class FlashGameManager(QtWidgets.QMainWindow):
                     logging.error(f"Error caching screenshot for game: {game['title']} - {e}")
 
             # Set paths and commands compatible with Flatpak
-            flashpoint_dir = os.path.join(self.data_folder, "Flashpoint")
-            clifp_exe_path = os.path.join(flashpoint_dir, "CLIFp.exe")
-            proton_ge_version = "GE-Proton9-16"  # Ensure this version is accessible within Flatpak
+            flashpoint_dir = os.path.join(self.data_folder, "flashpoint-nano")
+            flash_nano = os.path.join(flashpoint_dir, "flashpoint.sh")
 
             # Prepare the SteamTinkerLaunch command with adjusted paths
             steamtinkerlaunch_command = [
                 self.steam_tinker_launch_exec, "addnonsteamgame",
                 f"--appname={game['title']}",
-                f"--exepath={clifp_exe_path}",
-                f"--launchoptions=play -i \"{game_id}\"",
-                f"--startdir={flashpoint_dir}",
-                f"--iconpath={os.path.join(self.data_folder, f'{game_id}.png')}",
-                f"--compatibilitytool={proton_ge_version}"
+                f"--exepath=\"{flash_nano}\"",
+                f"--launchoptions=\"{game_id}\"",
+                f"--iconpath={os.path.join(self.data_folder, f'{game_id}.png')}"
             ]
 
             # Debug: Print the constructed command

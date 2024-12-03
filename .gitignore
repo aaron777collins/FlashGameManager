@@ -14,6 +14,7 @@ python_packages/
 python_packages.tar.gz
 SteamTinkerLaunch
 FlashPointAndSteamTinkerLaunch.zip
+flashpoint-nano.zip
 
 # C extensions
 *.so

@@ -7,7 +7,7 @@ export QT_QPA_PLATFORM_PLUGIN_PATH=$PWD/platforms
 export LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH
 
 # Define the target data directory path
-FLASHPOINT_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/Flashpoint"
+FLASHPOINT_TARGET_DATA_DIR="$HOME/.local/share/FlashGameManager/data/FlashGameManager/game_data/flashpoint-nano"
 
 echo "Initializing.."
 
@@ -17,7 +17,7 @@ if [ ! -d "$FLASHPOINT_TARGET_DATA_DIR" ]; then
     mkdir -p "$FLASHPOINT_TARGET_DATA_DIR"
 
     # Copy the Flashpoint folder and its contents to the target data directory
-    cp -r Flashpoint/* "$FLASHPOINT_TARGET_DATA_DIR"
+    cp -r flashpoint-nano/* "$FLASHPOINT_TARGET_DATA_DIR"
     echo "Flashpoint folder copied to $FLASHPOINT_TARGET_DATA_DIR"
 else
     echo "Flashpoint folder already exists at $FLASHPOINT_TARGET_DATA_DIR; skipping copy."
@@ -51,27 +51,6 @@ if [ ! -d "$IMAGES_TARGET_DATA_DIR" ]; then
     echo "images folder copied to $IMAGES_TARGET_DATA_DIR"
 else
     echo "images folder already exists at $IMAGES_TARGET_DATA_DIR; skipping copy."
-fi
-
-# Checking proton requirement
-echo "Checking Proton GE 9-16 installation.."
-
-if [ ! -d "$PROTON_GE_PATH" ]; then
-    echo "Downloading and installing Proton GE 9-16..."
-
-    # Create compatibilitytools.d directory if it doesn't exist
-    mkdir -p "$HOME/.steam/root/compatibilitytools.d"
-
-    # Download and extract Proton GE 9-16
-    wget https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-16/GE-Proton9-16.tar.gz -O /tmp/GE-Proton9-16.tar.gz
-    tar -xzf /tmp/GE-Proton9-16.tar.gz -C "$HOME/.steam/root/compatibilitytools.d/"
-
-    # Clean up
-    rm /tmp/GE-Proton9-16.tar.gz
-
-    echo "Proton GE 9-16 has been installed successfully."
-else
-    echo "Proton GE 9-16 is already installed."
 fi
 
 # Run the PyInstaller-built executable

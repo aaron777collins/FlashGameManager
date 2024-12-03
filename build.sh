@@ -27,7 +27,7 @@ pyinstaller manager.py --onefile --windowed --hidden-import=pkgutil --hidden-imp
 # Step 3: Create the distribution folder
 mkdir -p dist/FlashGameManager
 cp dist/manager dist/FlashGameManager/manager
-cp -r Flashpoint/ dist/FlashGameManager/Flashpoint
+cp -r flashpoint-nano/ dist/FlashGameManager/flashpoint-nano
 cp -r SteamTinkerLaunch/ dist/FlashGameManager/SteamTinkerLaunch
 mkdir -p dist/FlashGameManager/images
 cp -r images/ dist/FlashGameManager
